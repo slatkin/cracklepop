@@ -19,6 +19,7 @@
 
 package de.badaix.snapcast.ui
 
+import android.util.Log
 import android.app.Application
 import android.content.ComponentName
 import android.content.Context
@@ -117,6 +118,7 @@ class PlayerViewModel(application: Application) : AndroidViewModel(application) 
         bound: Boolean,
     ): PlayerUiState {
         val hasConfiguredHost = settings.getHost().isNotEmpty()
+        Log.d(TAG, "deriveState: hasConfiguredHost=$hasConfiguredHost, host='${settings.getHost()}', connection=$connection")
 
         // No server ever configured
         if (!hasConfiguredHost) {
@@ -164,14 +166,24 @@ class PlayerViewModel(application: Application) : AndroidViewModel(application) 
         )
     }
 
-    // --- Actions -------------------------------------------------------------
+    // --- Server setup navigation ---------------------------------------------
+
+    private val _showServerSetup = MutableStateFlow(false)
+    val showServerSetup: StateFlow<Boolean> = _showServerSetup.asStateFlow()
 
     fun setupServer() {
-        // Triggered from the Unconfigured state — open server discovery
+        _showServerSetup.value = true
     }
+
+    fun hideServerSetup() {
+        _showServerSetup.value = false
+    }
+
+    // --- Actions -------------------------------------------------------------
 
     fun retryConnection() {
         val host = settings.getHost()
+        Log.d(TAG, "retryConnection: host='$host', port=${settings.getControlPort()}")
         if (host.isNotEmpty()) {
             repository.connect(host, settings.getControlPort())
         }
@@ -199,6 +211,7 @@ class PlayerViewModel(application: Application) : AndroidViewModel(application) 
     fun onServerSelected(host: String, streamPort: Int) {
         val controlPort = streamPort + 1
         settings.setHost(host, streamPort, controlPort)
+        _showServerSetup.value = false
         repository.connect(host, controlPort)
     }
 
@@ -223,6 +236,10 @@ class PlayerViewModel(application: Application) : AndroidViewModel(application) 
     override fun onCleared() {
         super.onCleared()
         repository.cleanup()
+    }
+
+    companion object {
+        private const val TAG = "PlayerViewModel"
     }
 }
 

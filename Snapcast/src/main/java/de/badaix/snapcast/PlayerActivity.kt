@@ -61,9 +61,12 @@ class PlayerActivity : ComponentActivity() {
                 typography = EverforestTypography,
             ) {
                 val uiState by viewModel.uiState.collectAsStateWithLifecycle()
+                val showServerSetup by viewModel.showServerSetup.collectAsStateWithLifecycle()
                 CracklePopApp(
                     uiState = uiState,
+                    showServerSetup = showServerSetup,
                     onSetupServer = { viewModel.setupServer() },
+                    onHideServerSetup = { viewModel.hideServerSetup() },
                     onRetryConnection = { viewModel.retryConnection() },
                     onStartListening = { viewModel.startListening() },
                     onStopListening = { viewModel.stopListening() },
@@ -84,7 +87,9 @@ class PlayerActivity : ComponentActivity() {
 @Composable
 fun CracklePopApp(
     uiState: PlayerUiState,
+    showServerSetup: Boolean,
     onSetupServer: () -> Unit,
+    onHideServerSetup: () -> Unit,
     onRetryConnection: () -> Unit,
     onStartListening: () -> Unit,
     onStopListening: () -> Unit,
@@ -92,22 +97,19 @@ fun CracklePopApp(
     onToggleMute: () -> Unit,
     onServerSelected: (String, Int) -> Unit,
 ) {
-    var showServerSetup by remember { mutableStateOf(false) }
-
     when {
         showServerSetup -> {
             ServerSetupScreen(
                 onServerSelected = { host: String, port: Int ->
                     onServerSelected(host, port)
-                    showServerSetup = false
                 },
-                onBack = { showServerSetup = false },
+                onBack = { onHideServerSetup() },
             )
         }
         else -> {
             PlayerScreen(
                 uiState = uiState,
-                onSetupServer = { showServerSetup = true },
+                onSetupServer = onSetupServer,
                 onRetryConnection = onRetryConnection,
                 onStartListening = onStartListening,
                 onStopListening = onStopListening,
