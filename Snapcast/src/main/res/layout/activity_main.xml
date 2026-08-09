@@ -53,6 +53,101 @@
         android:layout_marginTop="?attr/actionBarSize"
         tools:layout="@layout/fragment_group_list" />
 
+    <ScrollView
+        android:id="@+id/localClientPanel"
+        android:layout_width="match_parent"
+        android:layout_height="match_parent"
+        android:fillViewport="true"
+        android:visibility="gone">
+
+        <LinearLayout
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_gravity="center"
+            android:gravity="center_horizontal"
+            android:orientation="vertical"
+            android:padding="32dp">
+
+            <TextView
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:text="@string/tv_this_device"
+                android:textAppearance="?android:attr/textAppearanceLarge"
+                android:textStyle="bold" />
+
+            <TextView
+                android:id="@+id/tvLocalStatus"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:layout_marginTop="12dp"
+                android:text="@string/tv_status_unconfigured"
+                android:textAppearance="?android:attr/textAppearanceMedium" />
+
+            <TextView
+                android:id="@+id/tvLocalGroup"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:layout_marginTop="8dp"
+                android:visibility="gone" />
+
+            <TextView
+                android:id="@+id/tvLocalStream"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:layout_marginTop="4dp"
+                android:visibility="gone" />
+
+            <Button
+                android:id="@+id/btnLocalPrimary"
+                android:layout_width="360dp"
+                android:layout_height="wrap_content"
+                android:layout_marginTop="24dp"
+                android:background="@drawable/tv_control_background"
+                android:text="@string/tv_configure_server"
+                android:textColor="@color/tv_control_text" />
+
+            <Button
+                android:id="@+id/btnLocalMute"
+                android:layout_width="360dp"
+                android:layout_height="wrap_content"
+                android:layout_marginTop="12dp"
+                android:background="@drawable/tv_control_background"
+                android:text="@string/tv_mute"
+                android:textColor="@color/tv_control_text"
+                android:visibility="gone" />
+
+            <SeekBar
+                android:id="@+id/sbLocalVolume"
+                android:layout_width="360dp"
+                android:layout_height="wrap_content"
+                android:layout_marginTop="12dp"
+                android:background="@drawable/tv_focus_outline"
+                android:contentDescription="@string/tv_volume"
+                android:max="100"
+                android:padding="10dp"
+                android:visibility="gone" />
+
+            <Button
+                android:id="@+id/btnManageServer"
+                android:layout_width="360dp"
+                android:layout_height="wrap_content"
+                android:layout_marginTop="24dp"
+                android:background="@drawable/tv_control_background"
+                android:text="@string/tv_manage_server"
+                android:textColor="@color/tv_control_text" />
+
+            <Button
+                android:id="@+id/btnTvSettings"
+                android:layout_width="360dp"
+                android:layout_height="wrap_content"
+                android:layout_marginTop="12dp"
+                android:background="@drawable/tv_control_background"
+                android:text="@string/settings"
+                android:textColor="@color/tv_control_text" />
+
+        </LinearLayout>
+    </ScrollView>
+
     <Button
         android:id="@+id/btnConnect"
         android:layout_width="wrap_content"
@@ -61,4 +156,3 @@
         android:text="@string/connect" />
 
 </androidx.coordinatorlayout.widget.CoordinatorLayout>
-

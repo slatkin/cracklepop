@@ -51,5 +51,21 @@
     <string name="resample_audio">resample audio stream</string>
     <string name="auto_start">Auto start Snapclient</string>
     <string name="connect">Connect</string>
+    <string name="tv_this_device">This Shield</string>
+    <string name="tv_status_unconfigured">No Snapserver configured</string>
+    <string name="tv_status_unavailable">Snapserver unavailable</string>
+    <string name="tv_status_stopped">Ready to listen</string>
+    <string name="tv_status_connecting">Connecting this Shield…</string>
+    <string name="tv_status_running">Receiving audio</string>
+    <string name="tv_configure_server">Configure server</string>
+    <string name="tv_retry_connection">Retry connection</string>
+    <string name="tv_start_listening">Start listening</string>
+    <string name="tv_stop_listening">Stop listening</string>
+    <string name="tv_mute">Mute</string>
+    <string name="tv_unmute">Unmute</string>
+    <string name="tv_volume">Volume</string>
+    <string name="tv_manage_server">Manage server…</string>
+    <string name="tv_group">Group: %1$s</string>
+    <string name="tv_stream">Stream: %1$s</string>
+    <string name="tv_unassigned">Unassigned</string>
 </resources>
-

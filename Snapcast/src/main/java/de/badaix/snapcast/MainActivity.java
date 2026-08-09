@@ -19,11 +19,13 @@
 package de.badaix.snapcast;
 
 import android.Manifest;
+import android.app.UiModeManager;
 import android.content.ComponentName;
 import android.content.Context;
 import android.content.Intent;
 import android.content.ServiceConnection;
 import android.content.pm.PackageManager;
+import android.content.res.Configuration;
 import android.media.AudioFormat;
 import android.media.AudioManager;
 import android.media.AudioRecord;
@@ -38,6 +40,8 @@ import android.view.MenuItem;
 import android.view.View;
 import android.view.WindowManager;
 import android.widget.Button;
+import android.widget.SeekBar;
+import android.widget.TextView;
 import android.widget.Toast;
 
 import androidx.activity.result.ActivityResultLauncher;
@@ -88,6 +92,32 @@ public class MainActivity extends AppCompatActivity implements GroupItem.GroupIt
     private CoordinatorLayout coordinatorLayout;
     private Button btnConnect = null;
     private boolean batchActive = false;
+    private boolean isTvDevice = false;
+    private boolean showingServerManagement = false;
+    private boolean localStartRequested = false;
+    private boolean updatingLocalVolume = false;
+    private View localClientPanel;
+    private View groupListView;
+    private View appBar;
+    private TextView tvLocalStatus;
+    private TextView tvLocalGroup;
+    private TextView tvLocalStream;
+    private Button btnLocalPrimary;
+    private Button btnLocalMute;
+    private SeekBar sbLocalVolume;
+    private Button btnManageServer;
+    private Button btnTvSettings;
+    private Client localClient;
+    private Group localGroup;
+    private LocalClientState localClientState = LocalClientState.UNCONFIGURED;
+
+    private enum LocalClientState {
+        UNCONFIGURED,
+        SERVER_UNAVAILABLE,
+        CLIENT_STOPPED,
+        CLIENT_CONNECTING,
+        CLIENT_RUNNING
+    }
 
     private final ActivityResultLauncher<String> requestPermissionLauncher =
             registerForActivityResult(new ActivityResultContracts.RequestPermission(), isGranted -> {
@@ -126,11 +156,15 @@ public class MainActivity extends AppCompatActivity implements GroupItem.GroupIt
             snapclientService = binder.getService();
             snapclientService.setListener(MainActivity.this);
             bound = true;
+            localStartRequested = snapclientService.isRunning();
+            updateLocalClientUi();
         }
 
         @Override
         public void onServiceDisconnected(ComponentName arg0) {
             bound = false;
+            localStartRequested = false;
+            updateLocalClientUi();
         }
     };
 
@@ -160,6 +194,45 @@ public class MainActivity extends AppCompatActivity implements GroupItem.GroupIt
         Toolbar toolbar = findViewById(R.id.toolbar);
         setSupportActionBar(toolbar);
 
+        UiModeManager uiModeManager = (UiModeManager) getSystemService(UI_MODE_SERVICE);
+        isTvDevice = uiModeManager != null &&
+                uiModeManager.getCurrentModeType() == Configuration.UI_MODE_TYPE_TELEVISION;
+
+        localClientPanel = findViewById(R.id.localClientPanel);
+        groupListView = findViewById(R.id.groupListFragment);
+        appBar = findViewById(R.id.appbar);
+        tvLocalStatus = findViewById(R.id.tvLocalStatus);
+        tvLocalGroup = findViewById(R.id.tvLocalGroup);
+        tvLocalStream = findViewById(R.id.tvLocalStream);
+        btnLocalPrimary = findViewById(R.id.btnLocalPrimary);
+        btnLocalMute = findViewById(R.id.btnLocalMute);
+        sbLocalVolume = findViewById(R.id.sbLocalVolume);
+        btnManageServer = findViewById(R.id.btnManageServer);
+        btnTvSettings = findViewById(R.id.btnTvSettings);
+
+        btnLocalPrimary.setOnClickListener(view -> onLocalPrimaryAction());
+        btnLocalMute.setOnClickListener(view -> toggleLocalMute());
+        btnManageServer.setOnClickListener(view -> showServerManagement());
+        btnTvSettings.setOnClickListener(view -> showServerSettings());
+        sbLocalVolume.setOnSeekBarChangeListener(new SeekBar.OnSeekBarChangeListener() {
+            @Override
+            public void onProgressChanged(SeekBar seekBar, int progress, boolean fromUser) {
+                if (!fromUser || updatingLocalVolume || localClient == null || remoteControl == null)
+                    return;
+                Volume volume = localClient.getConfig().getVolume();
+                volume.setPercent(progress);
+                remoteControl.setVolume(localClient, progress, volume.isMuted());
+            }
+
+            @Override
+            public void onStartTrackingTouch(SeekBar seekBar) {
+            }
+
+            @Override
+            public void onStopTrackingTouch(SeekBar seekBar) {
+            }
+        });
+
         btnConnect = findViewById(R.id.btnConnect);
         btnConnect.setVisibility(View.GONE);
         // Create the adapter that will return a fragment for each of the three
@@ -170,7 +243,215 @@ public class MainActivity extends AppCompatActivity implements GroupItem.GroupIt
 
         setActionbarSubtitle("Host: no Snapserver found");
         serverStatus = new ServerStatus();
+        if (isTvDevice)
+            showLocalClientPanel(true);
         askNotificationPermission();
+    }
+
+    private void showLocalClientPanel(boolean requestFocus) {
+        if (!isTvDevice)
+            return;
+        showingServerManagement = false;
+        appBar.setVisibility(View.GONE);
+        groupListView.setVisibility(View.GONE);
+        localClientPanel.setVisibility(View.VISIBLE);
+        renderLocalClientUi(requestFocus);
+    }
+
+    private void showServerManagement() {
+        if (!isTvDevice)
+            return;
+        showingServerManagement = true;
+        localClientPanel.setVisibility(View.GONE);
+        appBar.setVisibility(View.VISIBLE);
+        groupListView.setVisibility(View.VISIBLE);
+        groupListView.post(groupListView::requestFocus);
+    }
+
+    @Override
+    public void onBackPressed() {
+        if (isTvDevice && showingServerManagement) {
+            showLocalClientPanel(true);
+            return;
+        }
+        super.onBackPressed();
+    }
+
+    private void updateLocalClientUi() {
+        if (!isTvDevice || localClientPanel == null)
+            return;
+        runOnUiThread(() -> renderLocalClientUi(false));
+    }
+
+    private void renderLocalClientUi(boolean requestFocus) {
+        if (!isTvDevice || localClientPanel == null)
+            return;
+
+        resolveLocalClient();
+        boolean playerRunning = bound && snapclientService != null && snapclientService.isRunning();
+        boolean serverConnected = remoteControl != null && remoteControl.isConnected();
+
+        if (TextUtils.isEmpty(host))
+            localClientState = LocalClientState.UNCONFIGURED;
+        else if (!serverConnected)
+            localClientState = LocalClientState.SERVER_UNAVAILABLE;
+        else if (!playerRunning && !localStartRequested)
+            localClientState = LocalClientState.CLIENT_STOPPED;
+        else if (localClient == null || !localClient.isConnected())
+            localClientState = LocalClientState.CLIENT_CONNECTING;
+        else
+            localClientState = LocalClientState.CLIENT_RUNNING;
+
+        boolean showClientControls = localClientState == LocalClientState.CLIENT_RUNNING;
+        btnLocalMute.setVisibility(showClientControls ? View.VISIBLE : View.GONE);
+        sbLocalVolume.setVisibility(showClientControls ? View.VISIBLE : View.GONE);
+        tvLocalGroup.setVisibility(showClientControls ? View.VISIBLE : View.GONE);
+        tvLocalStream.setVisibility(showClientControls ? View.VISIBLE : View.GONE);
+
+        switch (localClientState) {
+            case UNCONFIGURED:
+                tvLocalStatus.setText(R.string.tv_status_unconfigured);
+                btnLocalPrimary.setText(R.string.tv_configure_server);
+                break;
+            case SERVER_UNAVAILABLE:
+                tvLocalStatus.setText(R.string.tv_status_unavailable);
+                btnLocalPrimary.setText(R.string.tv_retry_connection);
+                break;
+            case CLIENT_STOPPED:
+                tvLocalStatus.setText(R.string.tv_status_stopped);
+                btnLocalPrimary.setText(R.string.tv_start_listening);
+                break;
+            case CLIENT_CONNECTING:
+                tvLocalStatus.setText(R.string.tv_status_connecting);
+                btnLocalPrimary.setText(R.string.tv_stop_listening);
+                break;
+            case CLIENT_RUNNING:
+                tvLocalStatus.setText(R.string.tv_status_running);
+                btnLocalPrimary.setText(R.string.tv_stop_listening);
+                Volume volume = localClient.getConfig().getVolume();
+                btnLocalMute.setText(volume.isMuted() ? R.string.tv_unmute : R.string.tv_mute);
+                updatingLocalVolume = true;
+                sbLocalVolume.setProgress(volume.getPercent());
+                updatingLocalVolume = false;
+
+                String groupName = localGroup == null || TextUtils.isEmpty(localGroup.getName())
+                        ? getString(R.string.tv_unassigned)
+                        : localGroup.getName();
+                Stream stream = localGroup == null || serverStatus == null
+                        ? null
+                        : serverStatus.getStream(localGroup.getStreamId());
+                String streamName = stream == null || TextUtils.isEmpty(stream.getName())
+                        ? getString(R.string.tv_unassigned)
+                        : stream.getName();
+                tvLocalGroup.setText(getString(R.string.tv_group, groupName));
+                tvLocalStream.setText(getString(R.string.tv_stream, streamName));
+                break;
+        }
+
+        configureLocalFocus(requestFocus);
+    }
+
+    private void resolveLocalClient() {
+        localClient = null;
+        localGroup = null;
+        if (serverStatus == null)
+            return;
+
+        String localId = SnapclientService.getUniqueId(this);
+        for (Group group : serverStatus.getGroups()) {
+            Client client = group.getClient(localId);
+            if (client != null) {
+                localClient = client;
+                localGroup = group;
+                return;
+            }
+        }
+    }
+
+    private void configureLocalFocus(boolean requestFocus) {
+        ArrayList<View> focusViews = new ArrayList<>();
+        focusViews.add(btnLocalPrimary);
+        if (btnLocalMute.getVisibility() == View.VISIBLE)
+            focusViews.add(btnLocalMute);
+        if (sbLocalVolume.getVisibility() == View.VISIBLE)
+            focusViews.add(sbLocalVolume);
+        focusViews.add(btnManageServer);
+        focusViews.add(btnTvSettings);
+
+        for (int i = 0; i < focusViews.size(); i++) {
+            View view = focusViews.get(i);
+            view.setNextFocusUpId(focusViews.get((i + focusViews.size() - 1) % focusViews.size()).getId());
+            view.setNextFocusDownId(focusViews.get((i + 1) % focusViews.size()).getId());
+        }
+
+        if (showingServerManagement || localClientPanel.getVisibility() != View.VISIBLE)
+            return;
+        View focused = getCurrentFocus();
+        if (requestFocus || focused == null || !isDescendant(localClientPanel, focused) || !focused.isShown())
+            btnLocalPrimary.post(btnLocalPrimary::requestFocus);
+    }
+
+    private boolean isDescendant(View parent, View child) {
+        View current = child;
+        while (current != null) {
+            if (current == parent)
+                return true;
+            if (!(current.getParent() instanceof View))
+                return false;
+            current = (View) current.getParent();
+        }
+        return false;
+    }
+
+    private void onLocalPrimaryAction() {
+        switch (localClientState) {
+            case UNCONFIGURED:
+                showServerSettings();
+                break;
+            case SERVER_UNAVAILABLE:
+                startRemoteControl();
+                break;
+            case CLIENT_STOPPED:
+                localStartRequested = true;
+                startSnapclient();
+                updateLocalClientUi();
+                break;
+            case CLIENT_CONNECTING:
+            case CLIENT_RUNNING:
+                localStartRequested = false;
+                stopSnapclient();
+                updateLocalClientUi();
+                break;
+        }
+    }
+
+    private void toggleLocalMute() {
+        if (localClient == null || remoteControl == null)
+            return;
+        Volume volume = localClient.getConfig().getVolume();
+        volume.setMuted(!volume.isMuted());
+        remoteControl.setVolume(localClient, volume.getPercent(), volume.isMuted());
+        updateLocalClientUi();
+    }
+
+    private void showServerSettings() {
+        ServerDialogFragment serverDialogFragment = new ServerDialogFragment();
+        serverDialogFragment.setHost(Settings.getInstance(this).getHost(), Settings.getInstance(this).getStreamPort(), Settings.getInstance(this).getControlPort());
+        serverDialogFragment.setAutoStart(Settings.getInstance(this).isAutostart());
+        serverDialogFragment.setListener(new ServerDialogFragment.ServerDialogListener() {
+            @Override
+            public void onHostChanged(String host, int streamPort, int controlPort) {
+                setHost(host, streamPort, controlPort);
+                startRemoteControl();
+                updateLocalClientUi();
+            }
+
+            @Override
+            public void onAutoStartChanged(boolean autoStart) {
+                Settings.getInstance(MainActivity.this).setAutostart(autoStart);
+            }
+        });
+        serverDialogFragment.show(getSupportFragmentManager(), "serverDialogFragment");
     }
 
     @Override
@@ -200,22 +481,7 @@ public class MainActivity extends AppCompatActivity implements GroupItem.GroupIt
 
         //noinspection SimplifiableIfStatement
         if (id == R.id.action_settings) {
-            ServerDialogFragment serverDialogFragment = new ServerDialogFragment();
-            serverDialogFragment.setHost(Settings.getInstance(this).getHost(), Settings.getInstance(this).getStreamPort(), Settings.getInstance(this).getControlPort());
-            serverDialogFragment.setAutoStart(Settings.getInstance(this).isAutostart());
-            serverDialogFragment.setListener(new ServerDialogFragment.ServerDialogListener() {
-                @Override
-                public void onHostChanged(String host, int streamPort, int controlPort) {
-                    setHost(host, streamPort, controlPort);
-                    startRemoteControl();
-                }
-
-                @Override
-                public void onAutoStartChanged(boolean autoStart) {
-                    Settings.getInstance(MainActivity.this).setAutostart(autoStart);
-                }
-            });
-            serverDialogFragment.show(getSupportFragmentManager(), "serverDialogFragment");
+            showServerSettings();
 //            NsdHelper.getInstance(this).startListening("_snapcast._tcp.", SERVICE_NAME, this);
             return true;
         } else if (id == R.id.action_play_stop) {
@@ -304,6 +570,7 @@ public class MainActivity extends AppCompatActivity implements GroupItem.GroupIt
     public void onResume() {
         super.onResume();
         startRemoteControl();
+        updateLocalClientUi();
     }
 
     @Override
@@ -317,6 +584,7 @@ public class MainActivity extends AppCompatActivity implements GroupItem.GroupIt
 
         Intent intent = new Intent(this, SnapclientService.class);
         bindService(intent, mConnection, Context.BIND_AUTO_CREATE);
+        updateLocalClientUi();
     }
 
     @Override
@@ -340,13 +608,17 @@ public class MainActivity extends AppCompatActivity implements GroupItem.GroupIt
     @Override
     public void onPlayerStart(SnapclientService snapclientService) {
         Log.d(TAG, "onPlayerStart");
+        localStartRequested = true;
         updateStartStopMenuItem();
+        updateLocalClientUi();
     }
 
     @Override
     public void onPlayerStop(SnapclientService snapclientService) {
         Log.d(TAG, "onPlayerStop");
+        localStartRequested = false;
         updateStartStopMenuItem();
+        updateLocalClientUi();
         if (warningSamplerateSnackbar != null)
             warningSamplerateSnackbar.dismiss();
     }
@@ -394,7 +666,9 @@ public class MainActivity extends AppCompatActivity implements GroupItem.GroupIt
 
     @Override
     public void onError(SnapclientService snapclientService, String msg, Exception exception) {
+        localStartRequested = false;
         updateStartStopMenuItem();
+        updateLocalClientUi();
     }
 
 
@@ -429,7 +703,7 @@ public class MainActivity extends AppCompatActivity implements GroupItem.GroupIt
                 remoteControl.setLatency(client, client.getConfig().getLatency());
             if (serverStatus != null) {
                 serverStatus.updateClient(client);
-                groupListFragment.updateServer(serverStatus);
+                updateServerViews();
             }
         } else if (requestCode == GROUP_PROPERTIES_REQUEST) {
             String groupId = data.getStringExtra("group");
@@ -466,6 +740,13 @@ public class MainActivity extends AppCompatActivity implements GroupItem.GroupIt
         this.port = streamPort;
         this.controlPort = controlPort;
         Settings.getInstance(this).setHost(host, streamPort, controlPort);
+        updateLocalClientUi();
+    }
+
+    private void updateServerViews() {
+        if (groupListFragment != null)
+            groupListFragment.updateServer(serverStatus);
+        updateLocalClientUi();
     }
 
     public void updateMenuItems(final boolean connected) {
@@ -498,6 +779,7 @@ public class MainActivity extends AppCompatActivity implements GroupItem.GroupIt
         setHost(serviceInfo.getHost().getCanonicalHostName(), serviceInfo.getPort(), serviceInfo.getPort() + 1);
         startRemoteControl();
         NsdHelper.getInstance(this).stopListening();
+        updateLocalClientUi();
     }
 
 
@@ -532,7 +814,7 @@ public class MainActivity extends AppCompatActivity implements GroupItem.GroupIt
         client.setDeleted(true);
 
         serverStatus.updateClient(client);
-        groupListFragment.updateServer(serverStatus);
+        updateServerViews();
         deleteSnackbar = Snackbar.make(coordinatorLayout,
                 getString(R.string.client_deleted, client.getVisibleName()),
                 Snackbar.LENGTH_SHORT);
@@ -541,7 +823,7 @@ public class MainActivity extends AppCompatActivity implements GroupItem.GroupIt
             public void onClick(View v) {
                 client.setDeleted(false);
                 serverStatus.updateClient(client);
-                groupListFragment.updateServer(serverStatus);
+                updateServerViews();
             }
         });
         deleteSnackbar.addCallback(new Snackbar.Callback() {
@@ -582,18 +864,20 @@ public class MainActivity extends AppCompatActivity implements GroupItem.GroupIt
         setActionbarSubtitle(remoteControl.getHost());
         remoteControl.getServerStatus();
         updateMenuItems(true);
+        updateLocalClientUi();
     }
 
     @Override
     public void onConnecting(RemoteControl remoteControl) {
         setActionbarSubtitle("connecting: " + remoteControl.getHost());
+        updateLocalClientUi();
     }
 
     @Override
     public void onDisconnected(RemoteControl remoteControl, Exception e) {
         Log.d(TAG, "onDisconnected");
         serverStatus = new ServerStatus();
-        groupListFragment.updateServer(serverStatus);
+        updateServerViews();
         if (e != null) {
             if (e instanceof UnknownHostException)
                 setActionbarSubtitle("error: unknown host");
@@ -615,7 +899,7 @@ public class MainActivity extends AppCompatActivity implements GroupItem.GroupIt
     @Override
     public void onBatchEnd() {
         batchActive = false;
-        groupListFragment.updateServer(serverStatus);
+        updateServerViews();
     }
 
 
@@ -660,7 +944,7 @@ public class MainActivity extends AppCompatActivity implements GroupItem.GroupIt
         }
         client.setConnected(true);
         serverStatus.updateClient(client);
-        groupListFragment.updateServer(serverStatus);
+        updateServerViews();
     }
 
     @Override
@@ -672,13 +956,13 @@ public class MainActivity extends AppCompatActivity implements GroupItem.GroupIt
         }
         client.setConnected(false);
         serverStatus.updateClient(client);
-        groupListFragment.updateServer(serverStatus);
+        updateServerViews();
     }
 
     @Override
     public void onUpdate(Client client) {
         serverStatus.updateClient(client);
-        groupListFragment.updateServer(serverStatus);
+        updateServerViews();
     }
 
     @Override
@@ -692,7 +976,7 @@ public class MainActivity extends AppCompatActivity implements GroupItem.GroupIt
         }
         client.setVolume(volume);
         if (!batchActive)
-            groupListFragment.updateServer(serverStatus);
+            updateServerViews();
     }
 
     @Override
@@ -703,7 +987,7 @@ public class MainActivity extends AppCompatActivity implements GroupItem.GroupIt
             return;
         }
         client.getConfig().setLatency((int) latency);
-        groupListFragment.updateServer(serverStatus);
+        updateServerViews();
     }
 
     @Override
@@ -714,13 +998,13 @@ public class MainActivity extends AppCompatActivity implements GroupItem.GroupIt
             return;
         }
         client.getConfig().setName(name);
-        groupListFragment.updateServer(serverStatus);
+        updateServerViews();
     }
 
     @Override
     public void onUpdate(Group group) {
         serverStatus.updateGroup(group);
-        groupListFragment.updateServer(serverStatus);
+        updateServerViews();
     }
 
     @Override
@@ -732,7 +1016,7 @@ public class MainActivity extends AppCompatActivity implements GroupItem.GroupIt
         }
         g.setMuted(mute);
         serverStatus.updateGroup(g);
-        groupListFragment.updateServer(serverStatus);
+        updateServerViews();
     }
 
     @Override
@@ -744,18 +1028,18 @@ public class MainActivity extends AppCompatActivity implements GroupItem.GroupIt
         }
         g.setStreamId(streamId);
         serverStatus.updateGroup(g);
-        groupListFragment.updateServer(serverStatus);
+        updateServerViews();
     }
 
     @Override
     public void onUpdate(ServerStatus server) {
         this.serverStatus = server;
-        groupListFragment.updateServer(serverStatus);
+        updateServerViews();
     }
 
     @Override
     public void onUpdate(String streamId, Stream stream) {
         serverStatus.updateStream(stream);
-        groupListFragment.updateServer(serverStatus);
+        updateServerViews();
     }
 }
