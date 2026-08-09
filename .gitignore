@@ -88,3 +88,6 @@ Snapcast/release/output.json
 
 Snapcast/.cxx
 Snapcast/libs/*.aar
+
+# Worktrees
+.worktrees/
