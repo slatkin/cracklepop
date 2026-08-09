@@ -66,10 +66,10 @@ repo-specific facts; verify against the cited files before relying on them.
 
 ## Fork gotchas
 
-- Inherited upstream files still say snapdroid/badaix (README badge/release
-  links, CI paths like `/home/runner/work/snapdroid/snapdroid/`, submodule and
-  dependency URLs). Package/application id remain `de.badaix.snapcast`. Verify
-  fork-specific URLs/names before changing them.
+- Inherited upstream files still say snapdroid/badaix (submodule and dependency
+  URLs, upstream repo/docs; the package/application id remain `de.badaix.snapcast`).
+  README badge/release links and CI paths now use the fork name `cracklepop`.
+  Verify fork-specific URLs/names before changing them.
 
 ## CI ordering
 
