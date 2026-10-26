@@ -91,3 +91,9 @@ Snapcast/libs/*.aar
 
 # Worktrees
 .worktrees/
+
+# Agent session state
+.pi/
+
+# JVM crash dumps
+*.hprof
