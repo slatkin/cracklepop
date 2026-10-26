@@ -63,6 +63,8 @@ sealed class PlayerUiState {
         val muted: Boolean,
         val groupName: String?,
         val streamName: String?,
+        /** True while in the dimmed now-playing presentation. */
+        val dimmed: Boolean = false,
     ) : PlayerUiState()
 }
 

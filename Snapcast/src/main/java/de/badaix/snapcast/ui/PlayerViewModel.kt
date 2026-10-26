@@ -32,6 +32,8 @@ import de.badaix.snapcast.SnapclientService
 import de.badaix.snapcast.repository.ConnectionState
 import de.badaix.snapcast.repository.SnapcastRepository
 import de.badaix.snapcast.utils.Settings
+import kotlinx.coroutines.Job
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
@@ -90,16 +92,31 @@ class PlayerViewModel(application: Application) : AndroidViewModel(application) 
      */
     private val _isRefreshingVolume = MutableStateFlow(false)
 
+    // --- Dimmed now-playing --------------------------------------------------
+
+    /** Whether the running state should render dimmed. */
+    private val _dimmed = MutableStateFlow(false)
+
+    /** Inactivity countdown: cancels on input and on leaving the running state. */
+    private var dimJob: Job? = null
+
     init {
         combine(
             repository.connectionState,
             repository.serverStatus,
             repository.playerRunning,
             _serviceBound,
-        ) { connection, status, running, bound ->
-            deriveState(connection, status, running, bound)
+            _dimmed,
+        ) { connection, status, running, bound, dimmed ->
+            deriveState(connection, status, running, bound, dimmed)
         }.onEach { state ->
             _uiState.value = state
+            // Keep the countdown alive only while running; entering the running
+            // state starts it, leaving cancels it.
+            when (state) {
+                is PlayerUiState.ClientRunning -> if (!state.dimmed) startDimTimer()
+                else -> stopDimTimer()
+            }
         }.launchIn(viewModelScope)
 
         // Handle player start requests from the repository
@@ -116,6 +133,7 @@ class PlayerViewModel(application: Application) : AndroidViewModel(application) 
         status: de.badaix.snapcast.control.json.ServerStatus?,
         running: Boolean,
         bound: Boolean,
+        dimmed: Boolean,
     ): PlayerUiState {
         val hasConfiguredHost = settings.getHost().isNotEmpty()
         Log.d(TAG, "deriveState: hasConfiguredHost=$hasConfiguredHost, host='${settings.getHost()}', connection=$connection")
@@ -145,6 +163,7 @@ class PlayerViewModel(application: Application) : AndroidViewModel(application) 
                     muted = displayInfo.muted,
                     groupName = displayInfo.groupName,
                     streamName = displayInfo.streamName,
+                    dimmed = dimmed,
                 )
             } else {
                 // Running but no matching client yet — treat as connecting
@@ -223,6 +242,31 @@ class PlayerViewModel(application: Application) : AndroidViewModel(application) 
         _isRefreshingVolume.value = true
     }
 
+    /**
+     * Called on any user input while the screen is shown. Resets the inactivity
+     * countdown and wakes the running state from the dimmed presentation.
+     */
+    fun onUserInput() {
+        _dimmed.value = false
+        startDimTimer(restart = true)
+    }
+
+    /** Starts the countdown if not already active; [restart] forces a reset. */
+    private fun startDimTimer(restart: Boolean = false) {
+        if (!restart && dimJob?.isActive == true) return
+        dimJob?.cancel()
+        dimJob = viewModelScope.launch {
+            delay(DIM_TIMEOUT_MS)
+            _dimmed.value = true
+        }
+    }
+
+    private fun stopDimTimer() {
+        dimJob?.cancel()
+        dimJob = null
+        _dimmed.value = false
+    }
+
     private fun startServiceIntent(host: String, port: Int) {
         val context = getApplication<Application>()
         val intent = Intent(context, SnapclientService::class.java).apply {
@@ -240,6 +284,12 @@ class PlayerViewModel(application: Application) : AndroidViewModel(application) 
 
     companion object {
         private const val TAG = "PlayerViewModel"
+
+        /**
+         * Inactivity timeout before the running state dims, in milliseconds.
+         * Single tunable value; adjust here to change dim timing.
+         */
+        const val DIM_TIMEOUT_MS = 30_000L
     }
 }
 

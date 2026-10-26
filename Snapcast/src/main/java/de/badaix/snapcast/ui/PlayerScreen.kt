@@ -20,6 +20,7 @@
 package de.badaix.snapcast.ui
 
 import androidx.compose.foundation.background
+import androidx.compose.foundation.focusable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -32,6 +33,7 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -41,6 +43,9 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.focus.onFocusChanged
+import androidx.compose.ui.input.key.KeyEventType
+import androidx.compose.ui.input.key.onPreviewKeyEvent
+import androidx.compose.ui.input.key.type
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.tv.material3.Button
@@ -68,11 +73,19 @@ fun PlayerScreen(
     onStopListening: () -> Unit,
     onVolumeChanged: (Int) -> Unit,
     onToggleMute: () -> Unit,
+    onUserInput: () -> Unit,
 ) {
     Box(
         modifier = Modifier
             .fillMaxSize()
-            .background(MaterialTheme.colorScheme.background),
+            .background(MaterialTheme.colorScheme.background)
+            // Any key resets the inactivity timer and wakes the dimmed state.
+            .onPreviewKeyEvent { keyEvent ->
+                if (keyEvent.type == KeyEventType.KeyDown) {
+                    onUserInput()
+                }
+                false
+            },
     ) {
         Column(
             modifier = Modifier
@@ -103,6 +116,7 @@ fun PlayerScreen(
                     muted = uiState.muted,
                     groupName = uiState.groupName,
                     streamName = uiState.streamName,
+                    dimmed = uiState.dimmed,
                     onStop = onStopListening,
                     onVolumeChanged = onVolumeChanged,
                     onToggleMute = onToggleMute,
@@ -263,6 +277,7 @@ private fun RunningContent(
     muted: Boolean,
     groupName: String?,
     streamName: String?,
+    dimmed: Boolean,
     onStop: () -> Unit,
     onVolumeChanged: (Int) -> Unit,
     onToggleMute: () -> Unit,
@@ -276,6 +291,31 @@ private fun RunningContent(
     // Sync volume when it changes from the server
     if (currentVolume != volume) {
         currentVolume = volume
+    }
+
+    if (dimmed) {
+        // Dimmed now-playing: minimal read-only info, no controls. Kept
+        // focusable so key events still reach the root wake handler.
+        val dimmedFocus = remember { FocusRequester() }
+        Column(
+            horizontalAlignment = Alignment.CenterHorizontally,
+            modifier = Modifier
+                .fillMaxWidth()
+                .focusRequester(dimmedFocus)
+                .focusable(),
+        ) {
+            Text(
+                text = "Now playing",
+                style = MaterialTheme.typography.headlineLarge,
+                color = EverforestColors.grey0,
+            )
+            Spacer(modifier = Modifier.height(16.dp))
+            InfoRow(groupName = groupName, streamName = streamName)
+        }
+        LaunchedEffect(Unit) {
+            dimmedFocus.requestFocus()
+        }
+        return
     }
 
     Column(
