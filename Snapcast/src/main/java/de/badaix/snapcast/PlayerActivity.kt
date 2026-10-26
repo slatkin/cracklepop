@@ -71,7 +71,6 @@ class PlayerActivity : ComponentActivity() {
                     onStartListening = { viewModel.startListening() },
                     onStopListening = { viewModel.stopListening() },
                     onVolumeChanged = { viewModel.setVolume(it) },
-                    onToggleMute = { viewModel.toggleMute() },
                     onUserInput = { viewModel.onUserInput() },
                     onServerSelected = { host, port -> viewModel.onServerSelected(host, port) },
                 )
@@ -95,7 +94,6 @@ fun CracklePopApp(
     onStartListening: () -> Unit,
     onStopListening: () -> Unit,
     onVolumeChanged: (Int) -> Unit,
-    onToggleMute: () -> Unit,
     onUserInput: () -> Unit,
     onServerSelected: (String, Int) -> Unit,
 ) {
@@ -116,7 +114,6 @@ fun CracklePopApp(
                 onStartListening = onStartListening,
                 onStopListening = onStopListening,
                 onVolumeChanged = onVolumeChanged,
-                onToggleMute = onToggleMute,
                 onUserInput = onUserInput,
             )
         }

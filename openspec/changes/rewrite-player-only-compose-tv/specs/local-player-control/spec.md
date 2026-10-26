@@ -1,6 +1,6 @@
 ## Purpose
 
-Provide TV-first control of the Snapclient running on this device: connection state, start/stop, this client's volume and mute, and a read-only view of its current group and stream — all rendered from a single, deterministic state model.
+Provide TV-first control of the Snapclient running on this device: connection state, start/stop, this client's volume, and a read-only view of its mute state, current group and stream — all rendered from a single, deterministic state model.
 
 ## ADDED Requirements
 
@@ -45,7 +45,7 @@ The application SHALL render the player screen from one state model derived from
 #### Scenario: Running and controllable
 
 - **WHEN** the local Snapclient is running and a matching client is present in server status
-- **THEN** the screen presents the client-running state with stop, volume, and mute controls and the current group and stream
+- **THEN** the screen presents the client-running state with stop and volume controls, a read-only mute indicator, and the current group and stream
 
 #### Scenario: Callbacks arriving out of order
 
@@ -66,19 +66,19 @@ The application SHALL start and stop only the native Snapclient running on this 
 - **WHEN** the user activates stop in the client-running or client-connecting state
 - **THEN** the native Snapclient service stops and the screen transitions to client-stopped
 
-### Requirement: Control local client volume and mute
+### Requirement: Control local client volume
 
-The application SHALL adjust volume and mute for only the exactly matched local client using the existing per-client Snapcast control operations. Updates that only refresh the displayed value SHALL NOT emit control changes back to the server.
+The application SHALL adjust volume for only the exactly matched local client using the existing per-client Snapcast control operations, preserving the server's current mute flag on volume changes. The application SHALL NOT offer a mute control; mute state is display-only. Updates that only refresh the displayed value SHALL NOT emit control changes back to the server.
 
 #### Scenario: User changes volume
 
 - **WHEN** the user adjusts the volume control in the client-running state
 - **THEN** a per-client volume change is sent for the matched local client only
 
-#### Scenario: User toggles mute
+#### Scenario: Server reports muted
 
-- **WHEN** the user activates mute in the client-running state
-- **THEN** the matched local client's mute is toggled and reflected on screen
+- **WHEN** the server reports the matched local client as muted (e.g. muted from another client)
+- **THEN** the volume display reflects the muted state without offering a mute toggle
 
 #### Scenario: External volume change refreshes display
 

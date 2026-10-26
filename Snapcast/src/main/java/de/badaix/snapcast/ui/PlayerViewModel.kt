@@ -223,10 +223,6 @@ class PlayerViewModel(application: Application) : AndroidViewModel(application) 
         repository.setVolume(percent)
     }
 
-    fun toggleMute() {
-        repository.toggleMute()
-    }
-
     fun onServerSelected(host: String, streamPort: Int) {
         val controlPort = streamPort + 1
         settings.setHost(host, streamPort, controlPort)

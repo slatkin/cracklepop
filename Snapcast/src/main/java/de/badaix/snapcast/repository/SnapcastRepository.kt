@@ -161,12 +161,6 @@ class SnapcastRepository(
         remoteControl.setVolume(client, percent, currentVolume.isMuted)
     }
 
-    fun toggleMute() {
-        val client = localClient.value ?: return
-        val currentVolume = client.config.volume
-        remoteControl.setVolume(client, currentVolume.percent, !currentVolume.isMuted)
-    }
-
     // --- RemoteControl.RemoteControlListener ---------------------------------
 
     override fun onConnected(remoteControl: RemoteControl) {

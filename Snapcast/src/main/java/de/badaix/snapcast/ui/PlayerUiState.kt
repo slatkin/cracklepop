@@ -56,7 +56,7 @@ sealed class PlayerUiState {
         val streamName: String?,
     ) : PlayerUiState()
 
-    /** Running and controllable: volume, mute, read-only group/stream. */
+    /** Running and controllable: volume, read-only mute state, read-only group/stream. */
     data class ClientRunning(
         val localClient: Client,
         val volume: Int,

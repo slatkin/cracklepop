@@ -58,7 +58,8 @@ import de.badaix.snapcast.ui.theme.EverforestColors
 
 /**
  * Main player screen. Renders each [PlayerUiState] with tv-material3 controls:
- * primary state action, stop, mute, volume, and read-only group/stream.
+ * primary state action, stop, volume, and read-only group/stream. Mute state
+ * is display-only; the screen offers no mute control.
  *
  * Focus: deterministic initial focus per state on the primary action;
  * directional navigation with no dead ends; volume left/right adjustment;
@@ -72,7 +73,6 @@ fun PlayerScreen(
     onStartListening: () -> Unit,
     onStopListening: () -> Unit,
     onVolumeChanged: (Int) -> Unit,
-    onToggleMute: () -> Unit,
     onUserInput: () -> Unit,
 ) {
     Box(
@@ -119,7 +119,6 @@ fun PlayerScreen(
                     dimmed = uiState.dimmed,
                     onStop = onStopListening,
                     onVolumeChanged = onVolumeChanged,
-                    onToggleMute = onToggleMute,
                 )
             }
         }
@@ -280,10 +279,8 @@ private fun RunningContent(
     dimmed: Boolean,
     onStop: () -> Unit,
     onVolumeChanged: (Int) -> Unit,
-    onToggleMute: () -> Unit,
 ) {
     val stopFocus = remember { FocusRequester() }
-    val muteFocus = remember { FocusRequester() }
     val volumeFocus = remember { FocusRequester() }
 
     var currentVolume by remember { mutableStateOf(volume) }
@@ -342,29 +339,16 @@ private fun RunningContent(
         )
         Spacer(modifier = Modifier.height(32.dp))
 
-        // Stop and Mute buttons
-        Row(
-            horizontalArrangement = Arrangement.spacedBy(24.dp),
-        ) {
-            FocusedButton(
-                text = "Stop",
-                focusRequester = stopFocus,
-                onClick = onStop,
-                colors = ButtonDefaults.colors(
-                    containerColor = EverforestColors.red,
-                    contentColor = EverforestColors.bg0,
-                ),
-            )
-            FocusedButton(
-                text = if (muted) "Unmute" else "Mute",
-                focusRequester = muteFocus,
-                onClick = onToggleMute,
-                colors = ButtonDefaults.colors(
-                    containerColor = if (muted) EverforestColors.yellow else EverforestColors.bg3,
-                    contentColor = if (muted) EverforestColors.bg0 else EverforestColors.fg,
-                ),
-            )
-        }
+        // Stop button
+        FocusedButton(
+            text = "Stop",
+            focusRequester = stopFocus,
+            onClick = onStop,
+            colors = ButtonDefaults.colors(
+                containerColor = EverforestColors.red,
+                contentColor = EverforestColors.bg0,
+            ),
+        )
     }
 }
 
