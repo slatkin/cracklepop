@@ -73,7 +73,7 @@ public class SnapclientService extends Service {
     private PowerManager.WakeLock wakeLock = null;
     private WifiManager.WifiLock wifiWakeLock = null;
     private final Thread reader = null;
-    private boolean running = false;
+    private volatile boolean running = false;
     private SnapclientListener listener = null;
     private boolean logReceived;
     private final Handler restartHandler = new Handler();
@@ -264,6 +264,20 @@ public class SnapclientService extends Service {
                 } catch (IOException e) {
                     e.printStackTrace();
                 }
+                // The native process exited (crash, network loss, server
+                // disconnect). Unless stop() already handled it, reflect the
+                // exit so listeners don't stay stuck "running". Run on the
+                // main-thread handler to stay in sync with start()/stop().
+                restartHandler.post(new Runnable() {
+                    @Override
+                    public void run() {
+                        if (running) {
+                            running = false;
+                            if (listener != null)
+                                listener.onPlayerStop(SnapclientService.this);
+                        }
+                    }
+                });
             }
         });
         logReceived = false;

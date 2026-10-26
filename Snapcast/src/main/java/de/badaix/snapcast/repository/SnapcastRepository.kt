@@ -46,10 +46,10 @@ import kotlinx.coroutines.launch
  * The ViewModel collects these flows and derives a single [PlayerUiState]; the
  * repository never touches views.
  */
-class SnapcastRepository(private val appContext: Context) :
-    RemoteControl.RemoteControlListener,
+class SnapcastRepository(
+    private val appContext: Context,
+) : RemoteControl.RemoteControlListener,
     SnapclientService.SnapclientListener {
-
     private val scope = CoroutineScope(Dispatchers.Default + SupervisorJob())
     private val settings = Settings.getInstance(appContext)
     private val localHostId: String = SnapclientService.getUniqueId(appContext)
@@ -85,6 +85,11 @@ class SnapcastRepository(private val appContext: Context) :
     fun bindService(service: SnapclientService) {
         snapclientService = service
         service.setListener(this)
+        // The service may already be running (started from the notification or
+        // boot receiver, with no listener attached) and will not fire
+        // onPlayerStart again. Seed from its own state so the UI doesn't show
+        // stopped while audio is playing.
+        _playerRunning.value = service.isRunning()
     }
 
     fun unbindService() {
@@ -102,7 +107,10 @@ class SnapcastRepository(private val appContext: Context) :
         return true
     }
 
-    fun connect(host: String, controlPort: Int) {
+    fun connect(
+        host: String,
+        controlPort: Int,
+    ) {
         settings.setHost(host, controlPort - 1, controlPort)
         remoteControl.connect(host, controlPort)
     }
@@ -137,6 +145,7 @@ class SnapcastRepository(private val appContext: Context) :
     }
 
     private val _playerStartRequested = MutableStateFlow<Pair<String, Int>?>(null)
+
     /** When non-null, the Activity should start the service with these params. */
     val playerStartRequested: StateFlow<Pair<String, Int>?> = _playerStartRequested.asStateFlow()
 
@@ -172,7 +181,10 @@ class SnapcastRepository(private val appContext: Context) :
         _connectionState.value = ConnectionState.Connecting
     }
 
-    override fun onDisconnected(remoteControl: RemoteControl, e: Exception?) {
+    override fun onDisconnected(
+        remoteControl: RemoteControl,
+        e: Exception?,
+    ) {
         Log.d(TAG, "onDisconnected")
         _connectionState.value = ConnectionState.Disconnected
         _serverStatus.value = null
@@ -183,7 +195,10 @@ class SnapcastRepository(private val appContext: Context) :
         _serverStatus.value = server
     }
 
-    override fun onUpdate(streamId: String, stream: Stream) {
+    override fun onUpdate(
+        streamId: String,
+        stream: Stream,
+    ) {
         Log.d(TAG, "onUpdate Stream: $streamId")
         _serverStatus.update { it?.apply { updateStream(stream) } }
     }
@@ -222,7 +237,11 @@ class SnapcastRepository(private val appContext: Context) :
         }
     }
 
-    override fun onVolumeChanged(event: RemoteControl.RPCEvent, clientId: String, volume: Volume) {
+    override fun onVolumeChanged(
+        event: RemoteControl.RPCEvent,
+        clientId: String,
+        volume: Volume,
+    ) {
         Log.d(TAG, "onVolumeChanged: $clientId -> ${volume.percent}% muted=${volume.isMuted}")
         _serverStatus.update { status ->
             status?.apply {
@@ -235,21 +254,37 @@ class SnapcastRepository(private val appContext: Context) :
         }
     }
 
-    override fun onLatencyChanged(event: RemoteControl.RPCEvent, clientId: String, latency: Long) {
+    override fun onLatencyChanged(
+        event: RemoteControl.RPCEvent,
+        clientId: String,
+        latency: Long,
+    ) {
         // Not needed for player-only UI
     }
 
-    override fun onNameChanged(event: RemoteControl.RPCEvent, clientId: String, name: String) {
+    override fun onNameChanged(
+        event: RemoteControl.RPCEvent,
+        clientId: String,
+        name: String,
+    ) {
         // Not needed for player-only UI
     }
 
-    override fun onMute(event: RemoteControl.RPCEvent, groupId: String, mute: Boolean) {
+    override fun onMute(
+        event: RemoteControl.RPCEvent,
+        groupId: String,
+        mute: Boolean,
+    ) {
         Log.d(TAG, "onMute: $groupId muted=$mute")
         // Group mute affects all clients in the group; the server status update
         // will carry the individual client volume changes.
     }
 
-    override fun onStreamChanged(event: RemoteControl.RPCEvent, groupId: String, streamId: String) {
+    override fun onStreamChanged(
+        event: RemoteControl.RPCEvent,
+        groupId: String,
+        streamId: String,
+    ) {
         Log.d(TAG, "onStreamChanged: $groupId -> $streamId")
     }
 
@@ -284,7 +319,11 @@ class SnapcastRepository(private val appContext: Context) :
         // Not exposed to UI; could be wired to a debug log flow later.
     }
 
-    override fun onError(service: SnapclientService, msg: String, exception: Exception?) {
+    override fun onError(
+        service: SnapclientService,
+        msg: String,
+        exception: Exception?,
+    ) {
         Log.e(TAG, "onPlayerError: $msg", exception)
         _playerError.value = msg
     }
@@ -306,9 +345,7 @@ class SnapcastRepository(private val appContext: Context) :
      * the persistent host ID passed to the native client. No fallback to another
      * client.
      */
-    fun resolveLocalClient(status: ServerStatus): Client? {
-        return status.getClient(localHostId)
-    }
+    fun resolveLocalClient(status: ServerStatus): Client? = status.getClient(localHostId)
 
     // --- Cleanup -------------------------------------------------------------
 
@@ -326,6 +363,8 @@ class SnapcastRepository(private val appContext: Context) :
 /** Connection state of the JSON-RPC control link. */
 sealed class ConnectionState {
     object Disconnected : ConnectionState()
+
     object Connecting : ConnectionState()
+
     object Connected : ConnectionState()
 }
